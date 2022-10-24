@@ -27,10 +27,6 @@ using vendor::Vendor;
 using vendor::BidQuery;
 using vendor::BidReply;
 
-// class store { 
-// 
-// };
-
 class VendorClient {
 	public:
 		explicit VendorClient(std::shared_ptr<Channel> channel) 
