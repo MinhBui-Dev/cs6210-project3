@@ -2,20 +2,30 @@
 
 #include <iostream>
 #include <cstdlib>
+#include <memory>
+#include <string>
 #include <grpcpp/grpcpp.h>
 
 #include "store.grpc.pb.h"
+#include "vendor.grpc.pb.h"
 
 using grpc::Server;
 using grpc::ServerAsyncResponseWriter;
 using grpc::ServerBuilder;
 using grpc::ServerCompletionQueue;
 using grpc::ServerContext;
+using grpc::Channel;
+using grpc::ClientAsyncResponseReader;
+using grpc::ClientContext;
+using grpc::CompletionQueue;
 using grpc::Status;
 using store::Store;
 using store::ProductQuery;
 using store::ProductReply;
 using store::ProductInfo;
+using vendor::Vendor;
+using vendor::BidQuery;
+using vendor::BidReply;
 
 // class store { 
 // 
@@ -95,6 +105,35 @@ class StoreServerImpl final {
 		std::unique_ptr<Server> server_;
 };
 
+class VendorClient {
+	public:
+		explicit VendorClient(std::shared_ptr<Channel> channel) 
+			: stub_(Vendor::NewStub(channel)) {}
+		
+		BidReply getProductBid(const std::string& product_name) {
+			BidQuery request;
+			request.set_product_name(product_name);
+
+			BidReply response;
+			ClientContext context;
+			CompletionQueue cq;
+			Status status;
+
+			std::unique_ptr<ClientAsyncResponseReader<BidReply>> rpc(
+				stub_->AsyncgetProductBid(&context, request, &cq));
+			rpc->Finish(&response, &status, (void*)1);
+			void* got_tag;
+			bool ok = false;
+			GPR_ASSERT(cq.Next(&got_tag, &ok));
+			GPR_ASSERT(got_tag == (void*)1);
+			GPR_ASSERT(ok);
+			return response;
+		}
+
+	private:
+		std::unique_ptr<Vendor::Stub> stub_;
+};
+
 int main(int argc, char** argv) {
 	StoreServerImpl server;
 	std::string vendor_addr_file;
@@ -126,6 +165,10 @@ int main(int argc, char** argv) {
 
 	server.Run(store_addr);
 
+	VendorClient vendor(grpc::CreateChannel(
+		"localhost:50051", grpc::InsecureChannelCredentials()));
+	std::string product_name("book1");
+	BidReply response = vendor.getProductBid(product_name);
+	std::cout << product_name << " costs " << response.price() << " from vendor " << response.vendor_id() << std::endl;
 	return EXIT_SUCCESS;
 }
-
