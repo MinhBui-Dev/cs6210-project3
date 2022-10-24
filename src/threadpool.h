@@ -16,7 +16,7 @@ class threadpool {
     public:
 
         // Constructor creates a threadpool with the specified number of threads
-        threadpool(unsigned num_threads): {
+        threadpool(unsigned num_threads) {
             for (unsigned i = 0; i < num_threads; ++i) {
                 threads.push_back(std::thread(&threadpool::threadLoop, this));
             }
@@ -48,7 +48,7 @@ class threadpool {
         }
         
         // check if all jobs are done before calling destructor
-        void busy(){
+        bool busy(){
             bool busy;
             {
                 std::unique_lock<std::mutex> lock(queueMutex);
