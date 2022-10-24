@@ -31,6 +31,35 @@ using vendor::BidReply;
 // 
 // };
 
+class VendorClient {
+	public:
+		explicit VendorClient(std::shared_ptr<Channel> channel) 
+			: stub_(Vendor::NewStub(channel)) {}
+		
+		BidReply getProductBid(const std::string& product_name) {
+			BidQuery request;
+			request.set_product_name(product_name);
+
+			BidReply response;
+			ClientContext context;
+			CompletionQueue cq;
+			Status status;
+
+			std::unique_ptr<ClientAsyncResponseReader<BidReply>> rpc(
+				stub_->AsyncgetProductBid(&context, request, &cq));
+			rpc->Finish(&response, &status, (void*)1);
+			void* got_tag;
+			bool ok = false;
+			GPR_ASSERT(cq.Next(&got_tag, &ok));
+			GPR_ASSERT(got_tag == (void*)1);
+			GPR_ASSERT(ok);
+			return response;
+		}
+
+	private:
+		std::unique_ptr<Vendor::Stub> stub_;
+};
+
 class StoreServerImpl final {
 	public:
 		~StoreServerImpl() {
@@ -64,9 +93,15 @@ class StoreServerImpl final {
 					} else if (status_ == PROCESS) {
 						new CallData(service_, cq_);
 
+						std::string product_name(request_.product_name());
+						// TODO: fix connection being reestablished on every client call
+						VendorClient vendor1(grpc::CreateChannel(
+							"localhost:50051", grpc::InsecureChannelCredentials()));
+						BidReply response1 = vendor1.getProductBid(product_name);
+
 						ProductInfo* product_info = response_.add_products(); 
-						product_info->set_price(200);
-						product_info->set_vendor_id("1");
+						product_info->set_price(response1.price());
+						product_info->set_vendor_id(response1.vendor_id());
 
 						status_ = FINISH;
 						responder_.Finish(response_, Status::OK, this);
@@ -105,35 +140,6 @@ class StoreServerImpl final {
 		std::unique_ptr<Server> server_;
 };
 
-class VendorClient {
-	public:
-		explicit VendorClient(std::shared_ptr<Channel> channel) 
-			: stub_(Vendor::NewStub(channel)) {}
-		
-		BidReply getProductBid(const std::string& product_name) {
-			BidQuery request;
-			request.set_product_name(product_name);
-
-			BidReply response;
-			ClientContext context;
-			CompletionQueue cq;
-			Status status;
-
-			std::unique_ptr<ClientAsyncResponseReader<BidReply>> rpc(
-				stub_->AsyncgetProductBid(&context, request, &cq));
-			rpc->Finish(&response, &status, (void*)1);
-			void* got_tag;
-			bool ok = false;
-			GPR_ASSERT(cq.Next(&got_tag, &ok));
-			GPR_ASSERT(got_tag == (void*)1);
-			GPR_ASSERT(ok);
-			return response;
-		}
-
-	private:
-		std::unique_ptr<Vendor::Stub> stub_;
-};
-
 int main(int argc, char** argv) {
 	StoreServerImpl server;
 	std::string vendor_addr_file;
@@ -164,28 +170,5 @@ int main(int argc, char** argv) {
 	}
 
 	server.Run(store_addr);
-
-	VendorClient vendor1(grpc::CreateChannel(
-		"localhost:50051", grpc::InsecureChannelCredentials()));
-	VendorClient vendor2(grpc::CreateChannel(
-		"localhost:50052", grpc::InsecureChannelCredentials()));
-	VendorClient vendor3(grpc::CreateChannel(
-		"localhost:50053", grpc::InsecureChannelCredentials()));
-	VendorClient vendor4(grpc::CreateChannel(
-		"localhost:50054", grpc::InsecureChannelCredentials()));
-	VendorClient vendor5(grpc::CreateChannel(
-		"localhost:50055", grpc::InsecureChannelCredentials()));
-	std::string product_name("book1");
-	BidReply response1 = vendor1.getProductBid(product_name);
-	BidReply response2 = vendor2.getProductBid(product_name);
-	BidReply response3 = vendor3.getProductBid(product_name);
-	BidReply response4 = vendor4.getProductBid(product_name);
-	BidReply response5 = vendor5.getProductBid(product_name);
-	std::cout << product_name << std::endl;
-	std::cout << response1.vendor_id() << ": $" << response1.price() << std::endl;
-	std::cout << response2.vendor_id() << ": $" << response2.price() << std::endl;
-	std::cout << response3.vendor_id() << ": $" << response3.price() << std::endl;
-	std::cout << response4.vendor_id() << ": $" << response4.price() << std::endl;
-	std::cout << response5.vendor_id() << ": $" << response5.price() << std::endl;
 	return EXIT_SUCCESS;
 }
