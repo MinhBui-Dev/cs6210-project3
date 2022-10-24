@@ -165,10 +165,27 @@ int main(int argc, char** argv) {
 
 	server.Run(store_addr);
 
-	VendorClient vendor(grpc::CreateChannel(
+	VendorClient vendor1(grpc::CreateChannel(
 		"localhost:50051", grpc::InsecureChannelCredentials()));
+	VendorClient vendor2(grpc::CreateChannel(
+		"localhost:50052", grpc::InsecureChannelCredentials()));
+	VendorClient vendor3(grpc::CreateChannel(
+		"localhost:50053", grpc::InsecureChannelCredentials()));
+	VendorClient vendor4(grpc::CreateChannel(
+		"localhost:50054", grpc::InsecureChannelCredentials()));
+	VendorClient vendor5(grpc::CreateChannel(
+		"localhost:50055", grpc::InsecureChannelCredentials()));
 	std::string product_name("book1");
-	BidReply response = vendor.getProductBid(product_name);
-	std::cout << product_name << " costs " << response.price() << " from vendor " << response.vendor_id() << std::endl;
+	BidReply response1 = vendor1.getProductBid(product_name);
+	BidReply response2 = vendor2.getProductBid(product_name);
+	BidReply response3 = vendor3.getProductBid(product_name);
+	BidReply response4 = vendor4.getProductBid(product_name);
+	BidReply response5 = vendor5.getProductBid(product_name);
+	std::cout << product_name << std::endl;
+	std::cout << response1.vendor_id() << ": $" << response1.price() << std::endl;
+	std::cout << response2.vendor_id() << ": $" << response2.price() << std::endl;
+	std::cout << response3.vendor_id() << ": $" << response3.price() << std::endl;
+	std::cout << response4.vendor_id() << ": $" << response4.price() << std::endl;
+	std::cout << response5.vendor_id() << ": $" << response5.price() << std::endl;
 	return EXIT_SUCCESS;
 }
