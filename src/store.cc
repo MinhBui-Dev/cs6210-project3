@@ -29,6 +29,8 @@ using vendor::Vendor;
 using vendor::BidQuery;
 using vendor::BidReply;
 
+threadpool threadpool;
+
 class VendorClient {
 	public:
 		explicit VendorClient(std::shared_ptr<Channel> channel) 
@@ -90,18 +92,20 @@ class StoreServerImpl final {
 						status_ = PROCESS;
 						service_->RequestgetProducts(&ctx_, &request_, &responder_, cq_, cq_, this);
 					} else if (status_ == PROCESS) {
-						new CallData(service_, cq_, vendors_);
+						threadpool.addJob([this](){
+							std::string product_name(request_.product_name());
+							new CallData(service_, cq_, vendors_);
 
-						std::string product_name(request_.product_name());
-						for (int i = 0; i < vendors_.size(); i++) {
-							BidReply response = vendors_.at(i)->getProductBid(product_name);
+							for (int i = 0; i < vendors_.size(); i++) {
+								BidReply response = vendors_.at(i)->getProductBid(product_name);
+								ProductInfo* product_info = response_.add_products(); 
+								product_info->set_price(response.price());
+								product_info->set_vendor_id(response.vendor_id());
+							}
 
-							ProductInfo* product_info = response_.add_products(); 
-							product_info->set_price(response.price());
-							product_info->set_vendor_id(response.vendor_id());
-						}
-						status_ = FINISH;
-						responder_.Finish(response_, Status::OK, this);
+							status_ = FINISH;
+							responder_.Finish(response_, Status::OK, this); 
+						});
 					} else {
 						GPR_ASSERT(status_ = FINISH);
 						delete this;
@@ -154,6 +158,7 @@ std::vector<VendorClient*> get_vendor_addresses(std::string filename) {
 }
 
 int main(int argc, char** argv) {
+	
 	StoreServerImpl server;
 	std::string vendor_addr_file;
 	std::string store_addr;
@@ -183,6 +188,7 @@ int main(int argc, char** argv) {
 	}
 
 	std::vector<VendorClient*> vendors = get_vendor_addresses(vendor_addr_file);
+	threadpool.setThread(max_threads);
 
 	server.Run(store_addr, vendors);
 	return EXIT_SUCCESS;
