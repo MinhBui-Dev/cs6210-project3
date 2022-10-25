@@ -71,29 +71,30 @@ class StoreServerImpl final {
 			builder.RegisterService(&service_);
 			cq_ = builder.AddCompletionQueue();
 			server_ = builder.BuildAndStart();
+			vendors_ = vendors;
 			std::cout << "Server listening on " << server_address << std::endl;
 			
-			HandleRpcs(vendors);
+			HandleRpcs();
 		}
 
 	private:
 		class CallData {
 			public:
 				CallData(Store::AsyncService* service, ServerCompletionQueue* cq, std::vector<VendorClient*> vendors)
-					: service_(service), cq_(cq), responder_(&ctx_), status_(CREATE) {
-					Proceed(vendors);
+					: service_(service), cq_(cq), vendors_(vendors), responder_(&ctx_), status_(CREATE) {
+					Proceed();
 				}
 
-				void Proceed(std::vector<VendorClient*> vendors) {
+				void Proceed() {
 					if (status_ == CREATE) {
 						status_ = PROCESS;
 						service_->RequestgetProducts(&ctx_, &request_, &responder_, cq_, cq_, this);
 					} else if (status_ == PROCESS) {
-						new CallData(service_, cq_, vendors);
+						new CallData(service_, cq_, vendors_);
 
 						std::string product_name(request_.product_name());
-						for (int i = 0; i < vendors.size(); i++) {
-							BidReply response = vendors.at(i)->getProductBid(product_name);
+						for (int i = 0; i < vendors_.size(); i++) {
+							BidReply response = vendors_.at(i)->getProductBid(product_name);
 
 							ProductInfo* product_info = response_.add_products(); 
 							product_info->set_price(response.price());
@@ -111,6 +112,7 @@ class StoreServerImpl final {
 				Store::AsyncService* service_;
 				ServerCompletionQueue* cq_;
 				ServerContext ctx_;
+				std::vector<VendorClient*> vendors_;
 
 				ProductQuery request_;
 				ProductReply response_;
@@ -120,20 +122,21 @@ class StoreServerImpl final {
 				CallStatus status_;
 		};
 
-		void HandleRpcs(std::vector<VendorClient*> vendors) {
-			new CallData(&service_, cq_.get(), vendors);
+		void HandleRpcs() {
+			new CallData(&service_, cq_.get(), vendors_);
 			void *tag;
 			bool ok;
 			while (true) {
 				GPR_ASSERT(cq_->Next(&tag, &ok));
 				GPR_ASSERT(ok);
-				static_cast<CallData*>(tag)->Proceed(vendors);
+				static_cast<CallData*>(tag)->Proceed();
 			}
 		}
 
 		std::unique_ptr<ServerCompletionQueue> cq_;
 		Store::AsyncService service_;
 		std::unique_ptr<Server> server_;
+		std::vector<VendorClient*> vendors_;
 };
 
 std::vector<VendorClient*> get_vendor_addresses(std::string filename) {
