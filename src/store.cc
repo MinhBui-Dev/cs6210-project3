@@ -1,6 +1,8 @@
 #include "threadpool.h"
 
 #include <iostream>
+#include <fstream>
+#include <vector>
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -63,7 +65,7 @@ class StoreServerImpl final {
 			cq_->Shutdown();
 		}
 	
-		void Run(std::string server_address) {
+		void Run(std::string server_address, std::vector<VendorClient*> vendors) {
 			ServerBuilder builder;
 			builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
 			builder.RegisterService(&service_);
@@ -71,34 +73,32 @@ class StoreServerImpl final {
 			server_ = builder.BuildAndStart();
 			std::cout << "Server listening on " << server_address << std::endl;
 			
-			HandleRpcs();
+			HandleRpcs(vendors);
 		}
 
 	private:
 		class CallData {
 			public:
-				CallData(Store::AsyncService* service, ServerCompletionQueue* cq)
+				CallData(Store::AsyncService* service, ServerCompletionQueue* cq, std::vector<VendorClient*> vendors)
 					: service_(service), cq_(cq), responder_(&ctx_), status_(CREATE) {
-					Proceed();
+					Proceed(vendors);
 				}
 
-				void Proceed() {
+				void Proceed(std::vector<VendorClient*> vendors) {
 					if (status_ == CREATE) {
 						status_ = PROCESS;
 						service_->RequestgetProducts(&ctx_, &request_, &responder_, cq_, cq_, this);
 					} else if (status_ == PROCESS) {
-						new CallData(service_, cq_);
+						new CallData(service_, cq_, vendors);
 
 						std::string product_name(request_.product_name());
-						// TODO: fix connection being reestablished on every client call
-						VendorClient vendor1(grpc::CreateChannel(
-							"localhost:50051", grpc::InsecureChannelCredentials()));
-						BidReply response1 = vendor1.getProductBid(product_name);
+						for (int i = 0; i < vendors.size(); i++) {
+							BidReply response = vendors.at(i)->getProductBid(product_name);
 
-						ProductInfo* product_info = response_.add_products(); 
-						product_info->set_price(response1.price());
-						product_info->set_vendor_id(response1.vendor_id());
-
+							ProductInfo* product_info = response_.add_products(); 
+							product_info->set_price(response.price());
+							product_info->set_vendor_id(response.vendor_id());
+						}
 						status_ = FINISH;
 						responder_.Finish(response_, Status::OK, this);
 					} else {
@@ -120,14 +120,14 @@ class StoreServerImpl final {
 				CallStatus status_;
 		};
 
-		void HandleRpcs() {
-			new CallData(&service_, cq_.get());
+		void HandleRpcs(std::vector<VendorClient*> vendors) {
+			new CallData(&service_, cq_.get(), vendors);
 			void *tag;
 			bool ok;
 			while (true) {
 				GPR_ASSERT(cq_->Next(&tag, &ok));
 				GPR_ASSERT(ok);
-				static_cast<CallData*>(tag)->Proceed();
+				static_cast<CallData*>(tag)->Proceed(vendors);
 			}
 		}
 
@@ -135,6 +135,20 @@ class StoreServerImpl final {
 		Store::AsyncService service_;
 		std::unique_ptr<Server> server_;
 };
+
+std::vector<VendorClient*> get_vendor_addresses(std::string filename) {
+	std::vector<VendorClient*> vendors;
+	std::ifstream file(filename);
+	if (file.is_open()) {
+		std::string line;
+		while (std::getline(file, line)) {
+			vendors.push_back(new VendorClient(grpc::CreateChannel(
+				line, grpc::InsecureChannelCredentials())));
+		}
+		file.close();
+	}
+	return vendors;
+}
 
 int main(int argc, char** argv) {
 	StoreServerImpl server;
@@ -165,6 +179,8 @@ int main(int argc, char** argv) {
 			return EXIT_FAILURE;
 	}
 
-	server.Run(store_addr);
+	std::vector<VendorClient*> vendors = get_vendor_addresses(vendor_addr_file);
+
+	server.Run(store_addr, vendors);
 	return EXIT_SUCCESS;
 }
