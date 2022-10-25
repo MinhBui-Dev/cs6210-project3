@@ -21,6 +21,8 @@ using store::ProductInfo;
 // 
 // };
 
+threadpool threadpool;
+
 class StoreServerImpl final {
 	public:
 		~StoreServerImpl() {
@@ -52,14 +54,17 @@ class StoreServerImpl final {
 						status_ = PROCESS;
 						service_->RequestgetProducts(&ctx_, &request_, &responder_, cq_, cq_, this);
 					} else if (status_ == PROCESS) {
-						new CallData(service_, cq_);
 
-						ProductInfo* product_info = response_.add_products(); 
-						product_info->set_price(200);
-						product_info->set_vendor_id("1");
+						threadpool.addJob([this](){
+							new CallData(service_, cq_);
 
-						status_ = FINISH;
-						responder_.Finish(response_, Status::OK, this);
+							ProductInfo* product_info = response_.add_products(); 
+							product_info->set_price(200);
+							product_info->set_vendor_id("1");
+
+							status_ = FINISH;
+							responder_.Finish(response_, Status::OK, this); 
+						});
 					} else {
 						GPR_ASSERT(status_ = FINISH);
 						delete this;
@@ -96,6 +101,7 @@ class StoreServerImpl final {
 };
 
 int main(int argc, char** argv) {
+	
 	StoreServerImpl server;
 	std::string vendor_addr_file;
 	std::string store_addr;
@@ -124,6 +130,7 @@ int main(int argc, char** argv) {
 			return EXIT_FAILURE;
 	}
 
+	threadpool.setThread(max_threads);
 	server.Run(store_addr);
 
 	return EXIT_SUCCESS;

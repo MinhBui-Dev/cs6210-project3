@@ -14,9 +14,8 @@
 
 class threadpool {
     public:
-
-        // Constructor creates a threadpool with the specified number of threads
-        threadpool(unsigned num_threads): {
+        
+        setThread(unsigned num_threads): {
             for (unsigned i = 0; i < num_threads; ++i) {
                 threads.push_back(std::thread(&threadpool::threadLoop, this));
             }
