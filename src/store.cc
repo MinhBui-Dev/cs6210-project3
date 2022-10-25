@@ -160,7 +160,7 @@ int main(int argc, char** argv) {
 		default:
 			std::cout << "Invalid number of args" << std::endl;
 			std::cout << "./store <filepath for vendor addresses>" << std::endl;
-        	std::cout << "        " << "<ip address:port to listen on for clients>" << std::endl;
+			std::cout << "        " << "<ip address:port to listen on for clients>" << std::endl;
 			std::cout << "        " << "<maximum number of threads in threadpool>" << std::endl;
 			return EXIT_FAILURE;
 	}
